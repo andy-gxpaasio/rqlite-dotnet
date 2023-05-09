@@ -121,11 +121,14 @@ public class RqliteClient
 
     protected object GetValue(string valType, JsonElement el)
     {
-        object? x = valType switch
+        if (el.ValueKind == JsonValueKind.Null) { return null; }
+
+        object? x = valType.ToLower() switch
         {
             "text" => el.GetString(),
-            "integer" or "numeric" => el.GetInt32(),
+            "integer" or "numeric" => el.GetInt64(),
             "real" => el.GetDouble(),
+            "timestamp" => el.GetDateTime(),
             _ => throw new ArgumentException("Unsupported type")
         };
 
