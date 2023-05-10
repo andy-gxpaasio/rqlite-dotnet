@@ -10,9 +10,10 @@ public class RqliteClient
 {
     private readonly HttpClient _httpClient;
 
-    public RqliteClient(string uri, HttpClient? client = null)
+    public RqliteClient(string uri, HttpClient? client = null, int HTTPClientTimeout = 300)
     {
         _httpClient = client ?? new HttpClient(){ BaseAddress = new Uri(uri) };
+        _httpClient.Timeout = new TimeSpan(0, 0, HTTPClientTimeout);
     }
     
     /// <summary>
@@ -45,15 +46,79 @@ public class RqliteClient
     /// <summary>
     /// Execute command and return result
     /// </summary>
-    public async Task<ExecuteResults> Execute(string command)
+    public async Task<ExecuteResults> Execute(string command, bool Timings = true, bool Queue = false)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/db/execute?timings");
+        var path = new StringBuilder();
+        path.Append("/db/execute?");
+
+        List<string> flags = new List<string>();
+
+        if(Timings)     
+            flags.Add("timings");
+
+        if (Queue)
+            flags.Add("queue");
+
+        string flagsString = string.Join("&", flags);
+        path.Append(flagsString);
+
+        //var request = new HttpRequestMessage(HttpMethod.Post, "/db/execute?timings");
+        var request = new HttpRequestMessage(HttpMethod.Post, path.ToString());
         request.Content = new StringContent($"[\"{command}\"]", Encoding.UTF8, "application/json");
 
         var result = await _httpClient.SendTyped<ExecuteResults>(request);
         return result;
     }
-    
+
+    private string GetPath(string basePath, bool Timings = true, bool Queue = false)
+    {
+        var path = new StringBuilder();
+        path.AppendFormat("/db/{0}?",basePath);
+        
+        List<string> flags = new List<string>();
+
+        if (Timings)
+            flags.Add("timings");
+
+        if (Queue)
+            flags.Add("queue");
+
+        string flagsString = string.Join("&", flags);
+        path.Append(flagsString);
+
+        return path.ToString();
+    }
+
+    /// <summary>
+    /// Execute command and return result
+    /// </summary>
+    public async Task<ExecuteResults> Execute(List<string> commands, bool Timings = true, bool Queue = false)
+    {        
+        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute",Timings,Queue));
+
+        StringBuilder commandSB = new StringBuilder();
+        commandSB.Append("[");
+        foreach(string command in commands)
+        {
+            commandSB.Append($"\"{command}\",");
+        }
+        commandSB.Append("]");
+
+        var commandString = commandSB.ToString().Replace(",]", "]");
+        //commandString = commandString
+        //Console.WriteLine("");
+        //Console.WriteLine(commandString);
+        //Console.WriteLine("");
+
+        request.Content = new StringContent(commandString, Encoding.UTF8, "application/json");
+        
+        
+        var result = await _httpClient.SendTyped<ExecuteResults>(request);
+        return result;
+    }
+
+
+
     /// <summary>
     /// Execute one or several commands and return result
     /// </summary>
@@ -127,9 +192,10 @@ public class RqliteClient
         {
             "text" => el.GetString(),
             "integer" or "numeric" => el.GetInt64(),
+            "int" => el.GetInt32(),
             "real" => el.GetDouble(),
             "timestamp" => el.GetDateTime(),
-            _ => throw new ArgumentException("Unsupported type")
+            _ => throw new ArgumentException($"Unsupported type '{valType.ToLower()}'")
         };
 
         return x;

@@ -32,9 +32,13 @@ public class RqliteOrmClient : RqliteClient
                 foreach (var prop in typeof(T).GetProperties())
                 {
                     var index = res.Columns.FindIndex(c => c.ToLower() == prop.Name.ToLower());
-                    var val = GetValue(res.Types[index], res.Values[i][index]);
 
-                    prop.SetValue(dto, val);
+                    // Only add if the column is found, otherwise leave null
+                    if (index > -1)
+                    {
+                        var val = GetValue(res.Types[index], res.Values[i][index]);
+                        prop.SetValue(dto, val);
+                    }                    
                 }
 
                 list.Add(dto);
