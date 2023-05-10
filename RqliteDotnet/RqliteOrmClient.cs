@@ -23,19 +23,22 @@ public class RqliteOrmClient : RqliteClient
             throw new InvalidOperationException(res.Error);
         var list = new List<T>();
 
-        for (int i = 0; i < res.Values.Count; i++)
+        if (res.Values is not null)
         {
-            var dto = new T();
-
-            foreach (var prop in typeof(T).GetProperties())
+            for (int i = 0; i < res.Values.Count; i++)
             {
-                var index = res.Columns.FindIndex(c => c.ToLower() == prop.Name.ToLower());
-                var val = GetValue(res.Types[index], res.Values[i][index]);
-            
-                prop.SetValue(dto, val);
+                var dto = new T();
+
+                foreach (var prop in typeof(T).GetProperties())
+                {
+                    var index = res.Columns.FindIndex(c => c.ToLower() == prop.Name.ToLower());
+                    var val = GetValue(res.Types[index], res.Values[i][index]);
+
+                    prop.SetValue(dto, val);
+                }
+
+                list.Add(dto);
             }
-            
-            list.Add(dto);
         }
 
         return list;
