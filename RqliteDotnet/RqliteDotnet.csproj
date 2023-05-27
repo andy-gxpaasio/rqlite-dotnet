@@ -16,4 +16,8 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/rqlite/rqlite-dotnet/</PackageProjectUrl>     
     </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.Runtime" Version="4.3.0" />
+    </ItemGroup>
 </Project>

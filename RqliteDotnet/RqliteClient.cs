@@ -1,5 +1,7 @@
 ﻿using System.Data;
+using System.Diagnostics;
 using System.Net;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Text.Json;
 using RqliteDotnet.Dto;
@@ -20,21 +22,41 @@ public class RqliteClient
     /// Ping Rqlite instance
     /// </summary>
     /// <returns>String containining Rqlite version</returns>
-    public async Task<string> Ping()
+    public string Ping()
     {
-        var x = await _httpClient.GetAsync("/status");
-
-        return x.Headers.GetValues("X-Rqlite-Version").FirstOrDefault()!;
+        var response = _httpClient.GetAsync("/status").Result;
+        try
+        {
+            return response.Headers.GetValues("X-Rqlite-Version").FirstOrDefault()!.ToString();
+        }
+        catch
+        {
+            return "";
+        }
     }
-    
+
     /// <summary>
     /// Query DB and return result
     /// </summary>
     /// <param name="query"></param>
-    public async Task<QueryResults> Query(string query)
+    public QueryResults? Query(string query, DbFlag? flags = DbFlag.Timings)
+    {
+        var data = "&q=" + Uri.EscapeDataString(query);
+        var baseUrl = GetPath("query", flags); //"/db/query?timings";
+
+        var response = _httpClient.GetAsync($"{baseUrl}&{data}").Result.Content.ToString() ?? "";        
+        var result = JsonSerializer.Deserialize<QueryResults>(response, new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
+        return result;
+    }
+
+    /// <summary>
+    /// QueryAsync DB and return result
+    /// </summary>
+    /// <param name="query"></param>
+    public async Task<QueryResults?> QueryAsync(string query, DbFlag? flags = DbFlag.None)
     {
         var data = "&q="+Uri.EscapeDataString(query);
-        var baseUrl = "/db/query?timings";
+        var baseUrl = GetPath("query", flags); //"/db/query?timings";
 
         var r = await _httpClient.GetAsync($"{baseUrl}&{data}");
         var str = await r.Content.ReadAsStringAsync();
@@ -44,109 +66,123 @@ public class RqliteClient
     }
 
     /// <summary>
-    /// Execute command and return result
+    /// ExecuteAsync command and return result
     /// </summary>
-    public async Task<ExecuteResults> Execute(string command, bool Timings = true, bool Queue = false)
+    public async Task<ExecuteResults?> ExecuteAsync(string command, DbFlag? flags = DbFlag.None)
     {
-        var path = new StringBuilder();
-        path.Append("/db/execute?");
+        //var path = new StringBuilder();
+        //path.Append("/db/execute?");
 
-        List<string> flags = new List<string>();
+        //List<string> flags = new List<string>();
 
-        if(Timings)     
-            flags.Add("timings");
+        //if(Timings)     
+        //    flags.Add("timings");
+        //if (Queue)
+        //    flags.Add("queue");
+        //string flagsString = string.Join("&", flags);
+        //var parameters = GetParameters(flags);
 
-        if (Queue)
-            flags.Add("queue");
+        //path.Append(GetParameters(flags));
 
-        string flagsString = string.Join("&", flags);
-        path.Append(flagsString);
+        //var path = GetPath("execute", flags);
 
         //var request = new HttpRequestMessage(HttpMethod.Post, "/db/execute?timings");
-        var request = new HttpRequestMessage(HttpMethod.Post, path.ToString());
+        //var request = new HttpRequestMessage(HttpMethod.Post, path.ToString());
+        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute", flags));
         request.Content = new StringContent($"[\"{command}\"]", Encoding.UTF8, "application/json");
 
-        var result = await _httpClient.SendTyped<ExecuteResults>(request);
+        var result = await _httpClient.SendTypedAsync<ExecuteResults>(request);
         return result;
     }
 
-    private string GetPath(string basePath, bool Timings = true, bool Queue = false)
+    private string GetPath(string basePath, DbFlag? flags = DbFlag.None)
     {
         var path = new StringBuilder();
-        path.AppendFormat("/db/{0}?",basePath);
-        
-        List<string> flags = new List<string>();
-
-        if (Timings)
-            flags.Add("timings");
-
-        if (Queue)
-            flags.Add("queue");
-
-        string flagsString = string.Join("&", flags);
-        path.Append(flagsString);
-
+        path.AppendFormat("/db/{0}?",basePath);        
+        path.Append(GetParameters(flags));
         return path.ToString();
     }
 
     /// <summary>
-    /// Execute command and return result
+    /// ExecuteAsync command and return result
     /// </summary>
-    public async Task<ExecuteResults> Execute(List<string> commands, bool Timings = true, bool Queue = false)
-    {        
-        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute",Timings,Queue));
+    //public async Task<ExecuteResults> ExecuteAsync(List<string> commands, DbFlag? flags = DbFlag.None)
+    //{        
+    //    var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute", flags));
 
-        StringBuilder commandSB = new StringBuilder();
-        commandSB.Append("[");
-        foreach(string command in commands)
-        {
-            commandSB.Append($"\"{command}\",");
-        }
-        commandSB.Append("]");
+    //    StringBuilder commandSB = new StringBuilder();
+    //    commandSB.Append("[");
+    //    foreach(string command in commands)
+    //    {
+    //        commandSB.Append($"\"{command}\",");
+    //    }
+    //    commandSB.Append("]");
 
-        var commandString = commandSB.ToString().Replace(",]", "]");
-        //commandString = commandString
-        //Console.WriteLine("");
-        //Console.WriteLine(commandString);
-        //Console.WriteLine("");
+    //    var commandString = commandSB.ToString().Replace(",]", "]");
+    //    request.Content = new StringContent(commandString, Encoding.UTF8, "application/json");
 
-        request.Content = new StringContent(commandString, Encoding.UTF8, "application/json");
-        
-        
-        var result = await _httpClient.SendTyped<ExecuteResults>(request);
-        return result;
-    }
-
-
+    //    ExecuteResults result = await _httpClient.SendTypedAsync<ExecuteResults>(request);
+    //    return result;
+    //}
 
     /// <summary>
-    /// Execute one or several commands and return result
+    /// ExecuteAsync one or several commands and return result
     /// </summary>
     /// <param name="commands">Commands to execute</param>
     /// <param name="flags">Command flags, e.g. whether to use transaction</param>
     /// <returns></returns>
-    public async Task<ExecuteResults> Execute(IEnumerable<string> commands, DbFlag? flags)
+    public async Task<ExecuteResults?> ExecuteAsync(IEnumerable<string> commands, DbFlag? flags = DbFlag.None)
     {
-        var parameters = GetParameters(flags);
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/db/execute{parameters}");
-        commands = commands.Select(c => $"\"{c}\"");
-        var s = string.Join(",", commands);
 
+        Stopwatch sw = new Stopwatch();
+
+        sw.Reset();
+        sw.Start();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute",flags));
+        Console.WriteLine($"request: {sw.ElapsedMilliseconds}");
+        commands = commands.Select(c => $"\"{c}\"");
+        Console.WriteLine($"commands: {sw.ElapsedMilliseconds}");
+        var s = string.Join(",", commands);
+        Console.WriteLine($"string.Join: {sw.ElapsedMilliseconds}");
         request.Content = new StringContent($"[{s}]", Encoding.UTF8, "application/json");
-        var result = await _httpClient.SendTyped<ExecuteResults>(request);
+        Console.WriteLine($"request.Content : {sw.ElapsedMilliseconds}");
+        var result = await _httpClient.SendTypedAsync<ExecuteResults>(request);
+        Console.WriteLine($"result : {sw.ElapsedMilliseconds}");
         return result;
     }
-    
+
+    public ExecuteResults? Execute(IEnumerable<string> commands, DbFlag? flags = DbFlag.None)
+    {
+
+        Stopwatch sw = new Stopwatch();
+
+        sw.Reset();
+        sw.Start();
+
+        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("execute", flags));
+        Console.WriteLine($"request: {sw.ElapsedMilliseconds}");
+        commands = commands.Select(c => $"\"{c}\"");
+        Console.WriteLine($"commands: {sw.ElapsedMilliseconds}");
+        var s = string.Join(",", commands);
+        Console.WriteLine($"string.Join: {sw.ElapsedMilliseconds}");
+        request.Content = new StringContent($"[{s}]", Encoding.UTF8, "application/json");
+        Console.WriteLine($"request.Content : {sw.ElapsedMilliseconds}");
+        var result = _httpClient.SendTyped<ExecuteResults>(request);
+        Console.WriteLine($"result : {sw.ElapsedMilliseconds}");
+        return result;
+    }
+
     /// <summary>
-    /// Query DB using parametrized statement
+    /// QueryAsync DB using parametrized statement
     /// </summary>
     /// <param name="query"></param>
     /// <param name="qps"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public async Task<QueryResults> QueryParams<T>(string query, params T[] qps) where T: QueryParameter
+    public async Task<QueryResults?> QueryParams<T>(string query, params T[] qps) where T: QueryParameter
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, "/db/query?timings");
+        var request = new HttpRequestMessage(HttpMethod.Post, GetPath("query",DbFlag.Timings));
         var sb = new StringBuilder(typeof(T) == typeof(NamedQueryParameter) ?
             $"[[\"{query}\",{{" :
             $"[[\"{query}\",");
@@ -160,26 +196,22 @@ public class RqliteClient
         sb.Append(typeof(T) == typeof(NamedQueryParameter) ? "}]]" : "]]");
 
         request.Content = new StringContent(sb.ToString(), Encoding.UTF8, "application/json");
-        var result = await _httpClient.SendTyped<QueryResults>(request);
-
+        var result = await _httpClient.SendTypedAsync<QueryResults>(request);
         return result;
     }
 
-    private string GetParameters(DbFlag? flags)
+    private string GetParameters(DbFlag? flags = DbFlag.None)
     {
-        if (flags == null) return "";
-        var result = new StringBuilder("");
+        var result = new StringBuilder();
+        if (flags == null) return "";        
+        if(flags.HasFlag(DbFlag.None)) return "";
 
-        if ((flags & DbFlag.Timings) == DbFlag.Timings)
-        {
-            result.Append("&timings");
-        }
+        // If Queue is set then only Queue is used
+        if (flags.HasFlag(DbFlag.Queue)) flags = DbFlag.Queue;
 
-        if ((flags & DbFlag.Transaction) == DbFlag.Transaction)
-        {
-            result.Append("&transaction");
-        }
-
+        if (flags.HasFlag(DbFlag.Queue)) result.Append("&queue");                    
+        if (flags.HasFlag(DbFlag.Timings)) result.Append("&timings");
+        if (flags.HasFlag(DbFlag.Transaction)) result.Append("&transaction");
         if (result.Length > 0) result[0] = '?';
         return result.ToString();
     }
@@ -195,6 +227,7 @@ public class RqliteClient
             "int" => el.GetInt32(),
             "real" => el.GetDouble(),
             "timestamp" => el.GetDateTime(),
+            "bool" => el.GetInt16(),
             _ => throw new ArgumentException($"Unsupported type '{valType.ToLower()}'")
         };
 
